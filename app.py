@@ -9,7 +9,6 @@ import time
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.utils import resample
 
 # --- Configuración de la página ---
 st.set_page_config(page_title="Asistente de Calidad del Sueño", layout="centered")
@@ -28,45 +27,29 @@ def load_model_and_scaler(url):
     # --- Limpieza de datos ---
     df = df.dropna(subset=features + [target])       # eliminar nulos
     df = df.drop_duplicates()                        # eliminar duplicados
-
-    # Winsorización en 5% inferior y superior para cada característica
-    for col in features:
+    for col in features:  # winsorización al 5-95%
         lower = df[col].quantile(0.05)
         upper = df[col].quantile(0.95)
         df[col] = df[col].clip(lower, upper)
-
-    # Asegurar tipo numérico
     df[features] = df[features].apply(pd.to_numeric, errors='coerce')
     df = df.dropna(subset=features)
 
-    # Variables y objetivo
     X = df[features]
     y = df[target]
-
-    # Escalado
     scaler = MinMaxScaler().fit(X)
-
-    # División train/test con estratificación
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
-
-    # Entrenamiento del modelo
-    model = DecisionTreeClassifier(random_state=42)
-    model.fit(X_train, y_train)
-
-    # Métricas de desempeño
+    model = DecisionTreeClassifier(random_state=42).fit(X_train, y_train)
     train_acc = model.score(X_train, y_train)
     cv_scores = cross_val_score(model, X, y, cv=5)
-
     return model, scaler, features, train_acc, cv_scores
 
-# URL del dataset en GitHub
 DATA_URL = (
     "https://raw.githubusercontent.com/YesamL/TalentoTech/main/data/"
     "Sleep_health_and_lifestyle_dataset.csv"
 )
-with st.spinner("🔄 Cargando y limpiando datos (winsorization)…"):
+with st.spinner("🔄 Cargando y limpiando datos..."):
     model, scaler, feature_columns, train_acc, cv_scores = load_model_and_scaler(DATA_URL)
     st.success("✅ Datos limpios y modelo entrenado.")
 
@@ -75,144 +58,133 @@ with st.spinner("🔄 Cargando y limpiando datos (winsorization)…"):
 # ======================================
 def get_advice(score, data):
     msgs = ["Basado en mi predicción y tus datos:"]
-    h = data['Sleep Duration']
-    a = data['Physical Activity Level']
-    s = data['Stress Level']
-
+    h, a, s = data['Sleep Duration'], data['Physical Activity Level'], data['Stress Level']
     if score >= 8:
         msgs.append("✨ ¡Excelente! Tu calidad de sueño es alta. Sigue así. 😴")
         if s > 5:
-            msgs.append("⚠️ Aunque duermes bien, tu nivel de estrés es alto; trabaja en técnicas de relajación para mejorar la calidad del descanso.")
+            msgs.append("⚠️ Aunque duermes bien, tu nivel de estrés es alto; trabaja en técnicas de relajación para mejorar tu descanso.")
     elif score >= 6:
-        msgs.append("👍 Tu sueño es aceptable, pero podrías mejorarlo un poco.")
-        if h < 7:
-            msgs.append(f"- Duerme entre 7 y 9 horas por noche (actualmente {h:.1f}h).")
-        if a < 150:
-            msgs.append(f"- Realiza al menos 150 minutos de actividad física semanal (hoy {a:.0f} min).")
-        if s > 5:
-            msgs.append(f"- Practica técnicas de relajación; tu estrés es {s:.1f}.")
+        msgs.append("👍 Tu sueño es aceptable, pero podrías mejorarlo.")
+        if h < 7: msgs.append(f"- Duerme entre 7 y 9 horas (hoy {h:.1f}h).")
+        if a < 150: msgs.append(f"- Al menos 150 min de actividad física (hoy {a:.0f} min).")
+        if s > 5: msgs.append(f"- Práctica de relajación; estrés {s:.1f}.")
     else:
         msgs.append("⚠️ Tu calidad de sueño parece baja. Es importante actuar.")
-        if h < 7:
-            msgs.append(f"- Prioriza aumentar tus horas de sueño (solo {h:.1f}h).")
-        if a < 150:
-            msgs.append(f"- Incrementa tu actividad física regular (hoy {a:.0f} min).")
-        if s > 5:
-            msgs.append(f"- Enfócate en reducir el estrés (nivel {s:.1f}).")
-
-    msgs.append("💡 Incluso con buenos hábitos de sueño, mantén hidratación, pausas activas y meditación.")
+        if h < 7: msgs.append(f"- Aumenta tus horas de sueño (solo {h:.1f}h).")
+        if a < 150: msgs.append(f"- Incrementa actividad física (hoy {a:.0f} min).")
+        if s > 5: msgs.append(f"- Reduce el estrés (nivel {s:.1f}).")
+    msgs.append("💡 Mantén hidratación, pausas activas y meditación aun con buen sueño.")
     return msgs
 
 # ======================================
-# 3. 📌 Sesión y chat histórico
+# 3. 📌 Estado de sesión y chat histórico
 # ======================================
 if "state" not in st.session_state:
     st.session_state.state = "inicio"
+    st.session_state.history = []
     st.session_state.user_data = {}
     st.session_state.name = ""
-    st.session_state.history = []
-
 for msg in st.session_state.history:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["text"])
+    with st.chat_message(msg["role"]): st.markdown(msg["text"])
 
 # ======================================
 # 4. 📌 Función de bot
 # ======================================
 def bot_say(text):
-    with st.chat_message("assistant"):
-        st.markdown(text)
-    st.session_state.history.append({"role": "assistant", "text": text})
+    with st.chat_message("assistant"): st.markdown(text)
+    st.session_state.history.append({"role":"assistant","text":text})
 
 # ======================================
 # 5. 📌 Input de usuario
 # ======================================
 user_input = st.chat_input("Escribe aquí…")
 if user_input:
-    with st.chat_message("user"):
-        st.markdown(user_input)
-    st.session_state.history.append({"role": "user", "text": user_input})
-    st.session_state.last = user_input.strip()
+    with st.chat_message("user"): st.markdown(user_input)
+    st.session_state.history.append({"role":"user","text":user_input})
+    st.session_state.last = user_input.strip().lower()
 
 # ======================================
 # 6. 📌 Máquina de estados
 # ======================================
 state = st.session_state.state
+greetings = ["hola","buenos","buenas","hey","hi","saludos"]
+
 if state == "inicio":
     bot_say("¡Hola! 👋 ¿Cómo estás hoy? 😊")
     st.session_state.state = "saludo"
 elif state == "saludo" and "last" in st.session_state:
-    resp = st.session_state.last.lower()
+    resp = st.session_state.last
     if any(w in resp for w in ["bien","genial","excelente"]):
         bot_say("¡Me alegra oír eso! 🎉 Vamos a medir tu calidad de sueño.")
+    elif any(g in resp for g in greetings):
+        bot_say("¡Hola de nuevo! 🤗 Gracias por saludar.")
     else:
-        bot_say("Lo siento que no estés al 100%. Verifiquemos tu sueño para mejorar tu ánimo.")
+        bot_say("Lo siento que no estés al 100%. Vamos a revisar tu sueño para mejorar tu ánimo.")
     bot_say("¿Cómo te llamas?")
     st.session_state.state = "pidiendo_nombre"
 elif state == "pidiendo_nombre" and "last" in st.session_state:
     nm = st.session_state.last.split()[0].capitalize()
     st.session_state.name = nm
-    bot_say(f"Encantado, {nm}! Precisión de entrenamiento: {train_acc:.2%}, CV media: {cv_scores.mean():.2%}, desv: {cv_scores.std():.2%}.")
-    bot_say(f"Ahora, {nm}, ¿qué edad tienes? 🎂")
+    bot_say(f"Encantado, {nm}! Precisión entrenamiento: {train_acc:.2%}, CV media: {cv_scores.mean():.2%}, desv: {cv_scores.std():.2%}.")
+    bot_say(f"{nm}, ¿qué edad tienes? 🎂")
     st.session_state.state = "pidiendo_edad"
 elif state == "pidiendo_edad" and "last" in st.session_state:
     try:
-        v = float(st.session_state.last); assert 1 <= v <= 120
-        st.session_state.user_data['Age'] = v
-        bot_say(f"{st.session_state.name}, ¿horas de sueño por noche? 🛏️")
+        v = float(st.session_state.last); assert 1<=v<=120
+        st.session_state.user_data['Age']=v
+        bot_say(f"{st.session_state.name}, ¿horas de sueño? 🛏️")
         st.session_state.state = "pidiendo_sueno"
     except:
-        bot_say("❌ Edad inválida (1–120). Vuelve a intentar.")
+        bot_say("❌ Edad inválida (1–120). Intenta de nuevo.")
 elif state == "pidiendo_sueno" and "last" in st.session_state:
     try:
-        v = float(st.session_state.last); assert 0 < v <= 24
-        st.session_state.user_data['Sleep Duration'] = v
+        v=float(st.session_state.last); assert 0<v<=24
+        st.session_state.user_data['Sleep Duration']=v
         bot_say(f"{st.session_state.name}, ¿minutos de actividad semanal? 🏃‍♂️")
-        st.session_state.state = "pidiendo_actividad"
+        st.session_state.state="pidiendo_actividad"
     except:
-        bot_say("❌ Horas inválidas (0–24). Vuelve a intentar.")
+        bot_say("❌ Horas inválidas (0–24). Intenta de nuevo.")
 elif state == "pidiendo_actividad" and "last" in st.session_state:
     try:
-        v = float(st.session_state.last); assert v >= 0
-        st.session_state.user_data['Physical Activity Level'] = v
-        bot_say(f"{st.session_state.name}, en escala 1-10, ¿qué nivel de estrés sientes? 😰")
-        st.session_state.state = "pidiendo_estres"
+        v=float(st.session_state.last); assert v>=0
+        st.session_state.user_data['Physical Activity Level']=v
+        bot_say(f"{st.session_state.name}, nivel de estrés 1-10? 😰")
+        st.session_state.state="pidiendo_estres"
     except:
-        bot_say("❌ Valor inválido. Vuelve a intentar.")
-elif state == "pidiendo_estres" and "last" in st.session_state:
+        bot_say("❌ Valor inválido. Intenta de nuevo.")
+elif state=="pidiendo_estres" and "last" in st.session_state:
     try:
-        v = float(st.session_state.last); assert 1 <= v <= 10
-        st.session_state.user_data['Stress Level'] = v
-        st.session_state.state = "recolectando"
+        v=float(st.session_state.last); assert 1<=v<=10
+        st.session_state.user_data['Stress Level']=v
+        st.session_state.state="recolectando"
     except:
-        bot_say("❌ Nivel inválido (1–10). Vuelve a intentar.")
+        bot_say("❌ Nivel inválido (1–10). Intenta de nuevo.")
 
 # ======================================
 # 7. 📌 Predicción y consejos
 # ======================================
-if st.session_state.state == "recolectando":
+if st.session_state.state=="recolectando":
     with st.spinner("🔎 Analizando..."):
         time.sleep(1.5)
-        df_in = pd.DataFrame([st.session_state.user_data], columns=feature_columns)
-        scaled = scaler.transform(df_in)
-        pred = int(model.predict(scaled)[0])
-    lbl = "Excelente" if pred >= 8 else "Aceptable" if pred >= 6 else "Baja"
+        df_in=pd.DataFrame([st.session_state.user_data],columns=feature_columns)
+        scaled=scaler.transform(df_in)
+        pred=int(model.predict(scaled)[0])
+    lbl="Excelente" if pred>=8 else "Aceptable" if pred>=6 else "Baja"
     bot_say(f"🌟 {st.session_state.name}, tu calidad de sueño es **{pred}** ({lbl}).")
-    for msg in get_advice(pred, st.session_state.user_data):
-        bot_say(msg)
-    bot_say("💡 Incluso con buenos hábitos de sueño, mantén hidratación, pausas activas y meditación.")
-    bot_say("¿Otra predicción? Escribe 'empezar' o 'salir'.")
-    st.session_state.state = "preguntando_reiniciar"
+    for m in get_advice(pred,st.session_state.user_data): bot_say(m)
+    bot_say("💡 Aun con buen sueño, mantén hidratación, pausas activas y meditación.")
+    bot_say("¿Otra predicción? 'empezar' o 'salir'.")
+    st.session_state.state="preguntando_reiniciar"
 
 # ======================================
 # 8. 📌 Reinicio o fin
 # ======================================
-if state == "preguntando_reiniciar" and "last" in st.session_state:
-    ans = st.session_state.last.lower()
+if state=="preguntando_reiniciar" and "last" in st.session_state:
+    ans=st.session_state.last
     if any(k in ans for k in ["empezar","si"]):
-        st.session_state.user_data = {}
-        st.session_state.history = []
-        st.session_state.state = "pidiendo_edad"
+        st.session_state.user_data={}
+        st.session_state.history=[]
+        st.session_state.state="pidiendo_edad"
         bot_say(f"¡Empezamos de nuevo, {st.session_state.name}! ¿Qué edad tienes? 🎂")
     elif any(k in ans for k in ["salir","no"]):
         bot_say(f"¡Gracias, {st.session_state.name}! Que descanses. 🌙")
