@@ -1,5 +1,5 @@
 # ===============================================
-# 🤖 Asistente Virtual de Calidad del Sueño - Streamlit Chatbot (versión corregida)
+# 🤖 Asistente Virtual de Calidad del Sueño - Streamlit Chatbot (versión definitiva)
 # ===============================================
 
 import streamlit as st
@@ -16,185 +16,155 @@ st.title("🤖 Asistente Virtual de Calidad del Sueño 💤")
 st.caption("Impulsado por datos de TalentoTech")
 
 # ======================================
-# 1. 📌 Cargar y entrenar el modelo
+# 1. 📌 Cargar y entrenar el modelo (cacheado)
 # ======================================
 @st.cache_resource
-def load_data_train_model(data_url: str):
-    df = pd.read_csv(data_url)
-    feature_columns = ['Age', 'Sleep Duration', 'Physical Activity Level', 'Stress Level']
-    target_column = 'Quality of Sleep'
-
-    X = df[feature_columns]
-    y = df[target_column]
-
-    scaler = MinMaxScaler()
-    scaler.fit(X)
-
+def load_model_and_scaler(url):
+    df = pd.read_csv(url)
+    features = ['Age', 'Sleep Duration', 'Physical Activity Level', 'Stress Level']
+    X = df[features]
+    y = df['Quality of Sleep']
+    scaler = MinMaxScaler().fit(X)
     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42)
-    model = DecisionTreeClassifier(random_state=42)
-    model.fit(X_train, y_train)
+    model = DecisionTreeClassifier(random_state=42).fit(X_train, y_train)
+    return model, scaler, features
 
-    return model, scaler, feature_columns
-
-DATA_URL = 'https://raw.githubusercontent.com/YesamL/TalentoTech/main/data/Sleep_health_and_lifestyle_dataset.csv'
-model, scaler, feature_columns = load_data_train_model(DATA_URL)
+DATA_URL = "https://raw.githubusercontent.com/YesamL/TalentoTech/main/data/Sleep_health_and_lifestyle_dataset.csv"
+model, scaler, feature_columns = load_model_and_scaler(DATA_URL)
 
 # ======================================
-# 2. 📌 Lógica de Consejos
+# 2. 📌 Generador de consejos
 # ======================================
-def get_advice_messages(predicted_score: float, user_inputs: dict) -> list[str]:
-    messages = []
-    edad = user_inputs['Age']
-    horas_sueno = user_inputs['Sleep Duration']
-    actividad_fisica = user_inputs['Physical Activity Level']
-    nivel_estres = user_inputs['Stress Level']
-
-    messages.append("Basado en mi predicción y tus datos:")
-
-    if predicted_score >= 8:
-        messages.append("✨ ¡Excelente! Tu calidad de sueño es alta. Sigue así. 😴")
-    elif predicted_score >= 6:
-        messages.append("👍 Tu sueño es aceptable, pero podrías mejorarlo un poco.")
-        if horas_sueno < 7:
-            messages.append("- Duerme entre 7 y 9 horas por noche.")
-        if actividad_fisica < 150:
-            messages.append("- Aumenta tu actividad física semanal (al menos 150 minutos).")
-        if nivel_estres > 5:
-            messages.append("- Trabaja en técnicas de manejo de estrés.")
+def get_advice(score, data):
+    msgs = ["Basado en mi predicción y tus datos:"]
+    h, a, s = data['Sleep Duration'], data['Physical Activity Level'], data['Stress Level']
+    if score >= 8:
+        msgs += ["✨ ¡Excelente! Tu calidad de sueño es alta. Sigue así. 😴"]
+    elif score >= 6:
+        msgs += ["👍 Tu sueño es aceptable, pero podrías mejorar un poco."]
+        if h < 7: msgs.append("- Duerme entre 7 y 9 horas por noche.")
+        if a < 150: msgs.append("- Al menos 150 min de actividad física semanal.")
+        if s > 5: msgs.append("- Practica técnicas de relajación para el estrés.")
     else:
-        messages.append("⚠️ Tu calidad de sueño parece baja. Es importante actuar.")
-        if horas_sueno < 7:
-            messages.append("- Aumenta tus horas de sueño.")
-        if actividad_fisica < 150:
-            messages.append("- Haz más actividad física regularmente.")
-        if nivel_estres > 5:
-            messages.append("- Busca estrategias efectivas para controlar el estrés.")
-    return messages
+        msgs += ["⚠️ Tu calidad de sueño parece baja. Es importante actuar."]
+        if h < 7: msgs.append("- Aumenta tus horas de sueño.")
+        if a < 150: msgs.append("- Haz más ejercicio regularmente.")
+        if s > 5: msgs.append("- Trabaja en reducir tu estrés.")
+    return msgs
 
 # ======================================
-# 3. 📌 Chatbot - Flujo de Conversación
+# 3. 📌 Estado de sesión y mensajes previos
 # ======================================
-
-# --- Estado de sesión ---
-if "chat_state" not in st.session_state:
-    st.session_state.chat_state = "inicio"
-if "user_data" not in st.session_state:
+if "state" not in st.session_state:
+    st.session_state.state = "inicio"
     st.session_state.user_data = {}
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "user_name" not in st.session_state:
-    st.session_state.user_name = ""
+    st.session_state.name = ""
+    st.session_state.history = []
 
-# --- Mostrar mensajes anteriores ---
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+for msg in st.session_state.history:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["text"])
 
-# --- Flujo de conversación ---
-def preguntar(pregunta):
+# ======================================
+# 4. 📌 Función de envío del bot
+# ======================================
+def bot_say(text):
     with st.chat_message("assistant"):
-        st.markdown(pregunta)
-    st.session_state.messages.append({"role": "assistant", "content": pregunta})
+        st.markdown(text)
+    st.session_state.history.append({"role": "assistant", "text": text})
 
-# Inicio de la conversación
-if st.session_state.chat_state == "inicio":
-    preguntar("¡Hola! 👋 Soy tu asistente para mejorar tu calidad de sueño. ¿Cómo te llamas?")
-    st.session_state.chat_state = "pidiendo_nombre"
-
-# Entrada del usuario
-user_input = st.chat_input("Escribe aquí tu respuesta...")
-
+# ======================================
+# 5. 📌 Flujo principal y entrada de usuario
+# ======================================
+user_input = st.chat_input("Escribe aquí…")
 if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
-    st.session_state.messages.append({"role": "user", "content": user_input})
+    st.session_state.history.append({"role": "user", "text": user_input})
+    st.session_state.last = user_input.strip()
 
-    if st.session_state.chat_state == "pidiendo_nombre":
-        st.session_state.user_name = user_input.split()[0].capitalize()
-        preguntar(f"¡Mucho gusto, {st.session_state.user_name}! ¿Qué edad tienes? 🎂")
-        st.session_state.chat_state = "pidiendo_edad"
+# ======================================
+# 6. 📌 Máquina de estados
+# ======================================
+state = st.session_state.state
 
-    elif st.session_state.chat_state == "pidiendo_edad":
-        try:
-            edad = float(user_input)
-            if not (1 <= edad <= 120):
-                raise ValueError()
-            st.session_state.user_data["Age"] = edad
-            preguntar(f"{st.session_state.user_name}, ¿cuántas horas duermes por noche? 🛏️")
-            st.session_state.chat_state = "pidiendo_sueno"
-        except ValueError:
-            preguntar("❌ Por favor ingresa una edad válida entre 1 y 120 años.")
+if state == "inicio":
+    bot_say("¡Hola! 👋 ¿Cómo te llamas?")
+    st.session_state.state = "pidiendo_nombre"
 
-    elif st.session_state.chat_state == "pidiendo_sueno":
-        try:
-            horas = float(user_input)
-            if not (0 < horas <= 24):
-                raise ValueError()
-            st.session_state.user_data["Sleep Duration"] = horas
-            preguntar(f"{st.session_state.user_name}, ¿cuántos minutos de actividad física haces por semana? 🏃‍♂️")
-            st.session_state.chat_state = "pidiendo_actividad"
-        except ValueError:
-            preguntar("❌ Por favor ingresa una cantidad de horas de sueño válida (0-24).")
+elif state == "pidiendo_nombre" and "last" in st.session_state:
+    name = st.session_state.last.split()[0].capitalize()
+    st.session_state.name = name
+    bot_say(f"¡Mucho gusto, {name}! ¿Qué edad tienes? 🎂")
+    st.session_state.state = "pidiendo_edad"
 
-    elif st.session_state.chat_state == "pidiendo_actividad":
-        try:
-            actividad = float(user_input)
-            if actividad < 0:
-                raise ValueError()
-            st.session_state.user_data["Physical Activity Level"] = actividad
-            preguntar(f"{st.session_state.user_name}, en una escala del 1 al 10, ¿qué nivel de estrés sientes? 😰")
-            st.session_state.chat_state = "pidiendo_estres"
-        except ValueError:
-            preguntar("❌ Por favor ingresa minutos de actividad física válidos (positivo).")
+elif state == "pidiendo_edad" and "last" in st.session_state:
+    try:
+        val = float(st.session_state.last)
+        if not 1 <= val <= 120: raise ValueError()
+        st.session_state.user_data["Age"] = val
+        bot_say(f"{st.session_state.name}, ¿cuántas horas duermes por noche? 🛏️")
+        st.session_state.state = "pidiendo_sueno"
+    except:
+        bot_say("❌ Ingresa una edad válida (1–120).")
 
-    elif st.session_state.chat_state == "pidiendo_estres":
-        try:
-            estres = float(user_input)
-            if not (1 <= estres <= 10):
-                raise ValueError()
-            st.session_state.user_data["Stress Level"] = estres
-            st.session_state.chat_state = "recolectando"
+elif state == "pidiendo_sueno" and "last" in st.session_state:
+    try:
+        val = float(st.session_state.last)
+        if not 0 < val <= 24: raise ValueError()
+        st.session_state.user_data["Sleep Duration"] = val
+        bot_say(f"{st.session_state.name}, ¿cuántos minutos de actividad física haces por semana? 🏃‍♂️")
+        st.session_state.state = "pidiendo_actividad"
+    except:
+        bot_say("❌ Ingresa horas de sueño válidas (0–24).")
 
-            # ✅ Forzar el flujo a predicción directamente después de completar datos
-            st.experimental_rerun()
-        except ValueError:
-            preguntar("❌ Por favor ingresa un nivel de estrés entre 1 y 10.")
+elif state == "pidiendo_actividad" and "last" in st.session_state:
+    try:
+        val = float(st.session_state.last)
+        if val < 0: raise ValueError()
+        st.session_state.user_data["Physical Activity Level"] = val
+        bot_say(f"{st.session_state.name}, en una escala del 1 al 10, ¿cuánto estrés sientes? 😰")
+        st.session_state.state = "pidiendo_estres"
+    except:
+        bot_say("❌ Ingresa minutos de actividad positivos.")
 
-    elif st.session_state.chat_state == "preguntando_reiniciar":
-        if user_input.lower() in ["empezar", "sí", "si"]:
-            st.session_state.chat_state = "pidiendo_edad"
-            st.session_state.user_data = {}
-            st.session_state.messages = []
-            st.experimental_rerun()
-        elif user_input.lower() in ["salir", "no", "terminar"]:
-            preguntar("¡Gracias por usar el asistente! Que tengas un excelente descanso. 🌙")
-            st.balloons()
-            st.stop()
-        else:
-            preguntar("Por favor escribe 'empezar' para una nueva predicción o 'salir' para terminar.")
+elif state == "pidiendo_estres" and "last" in st.session_state:
+    try:
+        val = float(st.session_state.last)
+        if not 1 <= val <= 10: raise ValueError()
+        st.session_state.user_data["Stress Level"] = val
+        st.session_state.state = "recolectando"
+    except:
+        bot_say("❌ Ingresa un nivel de estrés entre 1 y 10.")
 
-# --- Si ya recolectó todos los datos, hacer predicción ---
-if st.session_state.chat_state == "recolectando":
-    with st.spinner("🔎 Analizando tus datos..."):
-        time.sleep(2)
-        user_data_df = pd.DataFrame([st.session_state.user_data], columns=feature_columns)
-        user_data_scaled = scaler.transform(user_data_df)
-        prediction = model.predict(user_data_scaled)[0]
+# ======================================
+# 7. 📌 Recolección completa → predicción
+# ======================================
+if st.session_state.state == "recolectando":
+    with st.spinner("🔎 Analizando tus datos…"):
+        time.sleep(1.5)
+        df_in = pd.DataFrame([st.session_state.user_data], columns=feature_columns)
+        scaled = scaler.transform(df_in)
+        pred = int(model.predict(scaled)[0])
+    bot_say(f"🌟 {st.session_state.name}, tu calidad de sueño es **{pred}**")
+    for advice in get_advice(pred, st.session_state.user_data):
+        bot_say(advice)
+    bot_say("¿Quieres otra predicción? Escribe 'empezar' o 'salir'.")
+    st.session_state.state = "preguntando_reiniciar"
 
-        prediction_message = f"🌟 {st.session_state.user_name}, según mis cálculos, tu calidad de sueño es: **{int(prediction)}**"
-        with st.chat_message("assistant"):
-            st.markdown(prediction_message)
-        st.session_state.messages.append({"role": "assistant", "content": prediction_message})
-
-        advice_messages = get_advice_messages(prediction, st.session_state.user_data)
-        for advice in advice_messages:
-            with st.chat_message("assistant"):
-                st.markdown(advice)
-            st.session_state.messages.append({"role": "assistant", "content": advice})
-
-        final_message = f"¿Te gustaría hacer otra predicción ('empezar') o prefieres terminar ('salir'), {st.session_state.user_name}?"
-        with st.chat_message("assistant"):
-            st.markdown(final_message)
-        st.session_state.messages.append({"role": "assistant", "content": final_message})
-
-        st.session_state.chat_state = "preguntando_reiniciar"
+# ======================================
+# 8. 📌 Estado de reinicio o fin
+# ======================================
+if state == "preguntando_reiniciar" and "last" in st.session_state:
+    ans = st.session_state.last.lower()
+    if "empezar" in ans or "sí" in ans or "si" in ans:
+        st.session_state.user_data = {}
+        st.session_state.history = []
+        st.session_state.state = "pidiendo_edad"
+        bot_say(f"¡Genial, {st.session_state.name}! Empecemos de nuevo. ¿Qué edad tienes? 🎂")
+    elif "salir" in ans or "no" in ans:
+        bot_say(f"¡Gracias por usar el asistente, {st.session_state.name}! Que descanses. 🌙")
+        st.balloons()
+        st.stop()
+    else:
+        bot_say("Escribe 'empezar' para otra predicción o 'salir' para terminar.")
