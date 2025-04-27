@@ -21,7 +21,6 @@ st.caption("Impulsado por datos de Mara y Samir")
 # ======================================
 @st.cache_resource
 def load_model_and_scaler(url):
-    # Cargar datos
     df = pd.read_csv(url)
     features = ['Age', 'Sleep Duration', 'Physical Activity Level', 'Stress Level']
     target = 'Quality of Sleep'
@@ -72,30 +71,36 @@ with st.spinner("🔄 Cargando y limpiando datos (winsorization)…"):
     st.success("✅ Datos limpios y modelo entrenado.")
 
 # ======================================
-# 2. 📌 Generador de consejos
+# 2. 📌 Generador de consejos mejorado
 # ======================================
 def get_advice(score, data):
     msgs = ["Basado en mi predicción y tus datos:"]
-    h = data['Sleep Duration']; a = data['Physical Activity Level']; s = data['Stress Level']
+    h = data['Sleep Duration']
+    a = data['Physical Activity Level']
+    s = data['Stress Level']
+
     if score >= 8:
         msgs.append("✨ ¡Excelente! Tu calidad de sueño es alta. Sigue así. 😴")
+        if s > 5:
+            msgs.append("⚠️ Aunque duermes bien, tu nivel de estrés es alto; trabaja en técnicas de relajación para mejorar la calidad del descanso.")
     elif score >= 6:
         msgs.append("👍 Tu sueño es aceptable, pero podrías mejorarlo un poco.")
         if h < 7:
-            msgs.append(f"- Duerme entre 7 y 9 horas por noche (tienes {h:.1f}h).")
+            msgs.append(f"- Duerme entre 7 y 9 horas por noche (actualmente {h:.1f}h).")
         if a < 150:
-            msgs.append(f"- Al menos 150 minutos de actividad física semanal (hoy {a:.0f} min).")
+            msgs.append(f"- Realiza al menos 150 minutos de actividad física semanal (hoy {a:.0f} min).")
         if s > 5:
-            msgs.append(f"- Practica técnicas de relajación (estrés: {s:.1f}).")
+            msgs.append(f"- Practica técnicas de relajación; tu estrés es {s:.1f}.")
     else:
         msgs.append("⚠️ Tu calidad de sueño parece baja. Es importante actuar.")
         if h < 7:
-            msgs.append(f"- Aumenta tus horas de sueño (solo {h:.1f}h).")
+            msgs.append(f"- Prioriza aumentar tus horas de sueño (solo {h:.1f}h).")
         if a < 150:
-            msgs.append(f"- Haz más ejercicio regularmente (hoy {a:.0f} min).")
+            msgs.append(f"- Incrementa tu actividad física regular (hoy {a:.0f} min).")
         if s > 5:
-            msgs.append(f"- Trabaja en reducir tu estrés (nivel {s:.1f}).")
-    msgs.append("💡 Incluso con buenos datos, mantén hidratación, pausas activas y meditación.")
+            msgs.append(f"- Enfócate en reducir el estrés (nivel {s:.1f}).")
+
+    msgs.append("💡 Incluso con buenos hábitos de sueño, mantén hidratación, pausas activas y meditación.")
     return msgs
 
 # ======================================
@@ -108,13 +113,15 @@ if "state" not in st.session_state:
     st.session_state.history = []
 
 for msg in st.session_state.history:
-    with st.chat_message(msg["role"]): st.markdown(msg["text"])
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["text"])
 
 # ======================================
 # 4. 📌 Función de bot
 # ======================================
 def bot_say(text):
-    with st.chat_message("assistant"): st.markdown(text)
+    with st.chat_message("assistant"):
+        st.markdown(text)
     st.session_state.history.append({"role": "assistant", "text": text})
 
 # ======================================
@@ -122,7 +129,8 @@ def bot_say(text):
 # ======================================
 user_input = st.chat_input("Escribe aquí…")
 if user_input:
-    with st.chat_message("user"): st.markdown(user_input)
+    with st.chat_message("user"):
+        st.markdown(user_input)
     st.session_state.history.append({"role": "user", "text": user_input})
     st.session_state.last = user_input.strip()
 
@@ -144,7 +152,7 @@ elif state == "saludo" and "last" in st.session_state:
 elif state == "pidiendo_nombre" and "last" in st.session_state:
     nm = st.session_state.last.split()[0].capitalize()
     st.session_state.name = nm
-    bot_say(f"Encantado, {nm}! Precisión training: {train_acc:.2%}, CV mean: {cv_scores.mean():.2%}, std: {cv_scores.std():.2%}.")
+    bot_say(f"Encantado, {nm}! Precisión de entrenamiento: {train_acc:.2%}, CV media: {cv_scores.mean():.2%}, desv: {cv_scores.std():.2%}.")
     bot_say(f"Ahora, {nm}, ¿qué edad tienes? 🎂")
     st.session_state.state = "pidiendo_edad"
 elif state == "pidiendo_edad" and "last" in st.session_state:
@@ -167,7 +175,7 @@ elif state == "pidiendo_actividad" and "last" in st.session_state:
     try:
         v = float(st.session_state.last); assert v >= 0
         st.session_state.user_data['Physical Activity Level'] = v
-        bot_say(f"{st.session_state.name}, nivel de estrés 1-10? 😰")
+        bot_say(f"{st.session_state.name}, en escala 1-10, ¿qué nivel de estrés sientes? 😰")
         st.session_state.state = "pidiendo_estres"
     except:
         bot_say("❌ Valor inválido. Vuelve a intentar.")
@@ -190,9 +198,10 @@ if st.session_state.state == "recolectando":
         pred = int(model.predict(scaled)[0])
     lbl = "Excelente" if pred >= 8 else "Aceptable" if pred >= 6 else "Baja"
     bot_say(f"🌟 {st.session_state.name}, tu calidad de sueño es **{pred}** ({lbl}).")
-    for msg in get_advice(pred, st.session_state.user_data): bot_say(msg)
-    bot_say("💡 Incluso con buenos datos, mantén hidratación, pausas activas y meditación.")
-    bot_say("¿Otra predicción? 'empezar' o 'salir'.")
+    for msg in get_advice(pred, st.session_state.user_data):
+        bot_say(msg)
+    bot_say("💡 Incluso con buenos hábitos de sueño, mantén hidratación, pausas activas y meditación.")
+    bot_say("¿Otra predicción? Escribe 'empezar' o 'salir'.")
     st.session_state.state = "preguntando_reiniciar"
 
 # ======================================
