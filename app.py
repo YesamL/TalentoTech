@@ -1,10 +1,10 @@
 # ===============================
-# 🔵 Chatbot - Análisis y Predicción de Calidad del Sueño (versión terminal conversacional)
+# 🔵 Chatbot - Calidad de Sueño en Streamlit Web
 # ===============================
 
+import streamlit as st
 import pandas as pd
 import numpy as np
-import time
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.preprocessing import MinMaxScaler
@@ -14,13 +14,11 @@ from sklearn.metrics import classification_report, confusion_matrix
 # 1. 📌 Cargar el conjunto de datos desde GitHub
 # ======================================
 
-# URL directa del archivo en GitHub
 url = 'https://raw.githubusercontent.com/YesamL/TalentoTech/main/data/Sleep_health_and_lifestyle_dataset.csv'
 
-print("\n🔹 Cargando dataset...")
+st.write("🔹 Cargando dataset...")
 df = pd.read_csv(url)
 
-# Seleccionar variables predictoras y objetivo
 feature_columns = ['Age', 'Sleep Duration', 'Physical Activity Level', 'Stress Level']
 X = df[feature_columns]
 y = df['Quality of Sleep']
@@ -29,108 +27,78 @@ y = df['Quality of Sleep']
 # 2. 📌 Preprocesamiento
 # ======================================
 
-print("\n🔹 Escalando características...")
 scaler = MinMaxScaler()
 X_scaled = scaler.fit_transform(X)
-
-print("\n🔹 Dividiendo datos...")
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
 # ======================================
 # 3. 📌 Entrenamiento del modelo
 # ======================================
 
-print("\n🔹 Entrenando modelo...")
 model = DecisionTreeClassifier(random_state=42)
 model.fit(X_train, y_train)
 
 # ======================================
-# 4. 📌 Evaluación del Modelo
+# 4. 📌 Evaluación del modelo
 # ======================================
 
-print("\n🔹 Evaluando el modelo...")
-
-# Validación cruzada
+st.subheader("📈 Evaluación del Modelo de Predicción")
 cv_scores = cross_val_score(model, X_scaled, y, cv=5)
-print(f"\n🔵 Precisión promedio con validación cruzada: {np.mean(cv_scores):.2f}")
+st.write(f"🔵 Precisión promedio con validación cruzada: {np.mean(cv_scores):.2f}")
 
-# Matriz de confusión
 y_pred = model.predict(X_test)
-print("\n🔵 Matriz de confusión:")
-print(confusion_matrix(y_test, y_pred))
+st.write("🔵 Matriz de Confusión:")
+st.text(confusion_matrix(y_test, y_pred))
 
-# Informe de clasificación
-print("\n🔵 Informe de clasificación:")
-print(classification_report(y_test, y_pred))
+st.write("🔵 Informe de Clasificación:")
+st.text(classification_report(y_test, y_pred))
 
 # ======================================
-# 5. 📌 Funciones para interacción
+# 5. 📌 Chatbot de predicción interactiva
 # ======================================
 
-def dar_consejos(predicted_score, user_inputs):
-    print("\n🤖 Basándome en tu predicción y datos ingresados:")
+st.title("🤖 Asistente de Calidad del Sueño - TalentoTech 💤")
 
-    if predicted_score >= 8:
-        print("- 🤖 ¡Excelente calidad de sueño! Sigue manteniendo tus buenos hábitos.")
-    elif predicted_score >= 6:
-        print("- 🤖 Tu sueño es bueno, pero podrías mejorar algunas áreas.")
-        if user_inputs['Sleep Duration'].iloc[0] < 7:
-            print("- 🤖 Intenta dormir al menos entre 7 y 9 horas diarias.")
-        if user_inputs['Physical Activity Level'].iloc[0] < 150:
-            print("- 🤖 Realizar más actividad física puede mejorar tu descanso.")
-        if user_inputs['Stress Level'].iloc[0] > 5:
-            print("- 🤖 Considera técnicas de relajación para reducir el estrés.")
+st.write("Completa los siguientes datos para obtener una predicción:")
+
+# --- Inputs visuales en la web ---
+age = st.number_input("📝 ¿Qué edad tienes?", min_value=0, max_value=120, step=1)
+sleep_duration = st.number_input("🛏️ ¿Cuántas horas duermes por noche?", min_value=0.0, max_value=24.0, step=0.5)
+physical_activity = st.number_input("🏃‍♂️ ¿Cuántos minutos de actividad física haces por semana?", min_value=0, max_value=2000, step=10)
+stress_level = st.slider("😰 ¿Nivel de estrés de 1 a 10?", min_value=1, max_value=10)
+
+# Botón para predecir
+if st.button("Predecir Calidad de Sueño"):
+    # Crear dataframe del usuario
+    user_data = pd.DataFrame([[age, sleep_duration, physical_activity, stress_level]], columns=feature_columns)
+    
+    # Escalar datos
+    user_data_scaled = scaler.transform(user_data)
+
+    # Hacer predicción
+    predicted_quality = model.predict(user_data_scaled)[0]
+
+    st.success(f"🌟 Predicción de Calidad de Sueño: {predicted_quality}")
+
+    # --- Consejos basados en la predicción ---
+    st.subheader("💡 Consejos Personalizados:")
+    if predicted_quality >= 8:
+        st.info("¡Excelente! Tu calidad de sueño es alta. Mantén tus hábitos saludables. 😴✨")
+    elif predicted_quality >= 6:
+        st.warning("Tu sueño es aceptable, pero podrías mejorarlo un poco.")
+        if sleep_duration < 7:
+            st.write("- Intenta dormir al menos entre 7 y 9 horas.")
+        if physical_activity < 150:
+            st.write("- Aumenta tu actividad física semanal para mejorar el descanso.")
+        if stress_level > 5:
+            st.write("- Considera técnicas para reducir el estrés como meditación o ejercicio moderado.")
     else:
-        print("- 🤖 Parece que tu sueño no es el mejor actualmente.")
-        if user_inputs['Sleep Duration'].iloc[0] < 7:
-            print("- 🤖 Intenta dormir más horas regularmente.")
-        if user_inputs['Physical Activity Level'].iloc[0] < 150:
-            print("- 🤖 Aumenta tu actividad física diaria.")
-        if user_inputs['Stress Level'].iloc[0] > 5:
-            print("- 🤖 Reducir tu nivel de estrés puede ayudarte mucho.")
-        print("- 🤖 Mantén buena higiene del sueño (ambiente oscuro, tranquilo y fresco).")
+        st.error("Tu calidad de sueño parece baja. ¡Es momento de cuidar tu descanso!")
+        if sleep_duration < 7:
+            st.write("- Aumenta tus horas de sueño diario.")
+        if physical_activity < 150:
+            st.write("- Haz más actividad física para mejorar tu estado de ánimo y descanso.")
+        if stress_level > 5:
+            st.write("- Busca maneras de controlar el estrés: yoga, respiración, pausas activas.")
 
-def obtener_prediccion_y_consejos(model, scaler, feature_columns):
-    print("\n🤖 Vamos a predecir tu calidad de sueño.")
-    try:
-        edad = float(input("🖊️ ¿Qué edad tienes?: "))
-        horas_sueno = float(input("🖊️ ¿Cuántas horas duermes por noche?: "))
-        actividad_fisica = float(input("🖊️ ¿Cuántos minutos de actividad física haces por semana?: "))
-        nivel_estres = float(input("🖊️ ¿Nivel de estrés de 1 a 10?: "))
-
-        # Crear dataframe
-        user_data = pd.DataFrame([[edad, horas_sueno, actividad_fisica, nivel_estres]], columns=feature_columns)
-        
-        # Escalar datos
-        user_data_scaled = scaler.transform(user_data)
-
-        # Predicción
-        predicted_quality = model.predict(user_data_scaled)[0]
-        print(f"\n🤖 Predicción: Tu calidad de sueño es: {predicted_quality}")
-
-        # Dar consejos personalizados
-        dar_consejos(predicted_quality, user_data)
-
-    except ValueError:
-        print("❌ Error: Por favor ingresa solo números válidos.")
-    except Exception as e:
-        print(f"❌ Error inesperado: {e}")
-
-# ======================================
-# 6. 📌 Chatbot principal
-# ======================================
-
-print("\n🤖 Bienvenido al Asistente de Sueño - TalentoTech 💤")
-
-while True:
-    print("\n📝 Escribe 'predecir' para analizar tu sueño, o 'salir' para terminar.")
-    comando = input("🖊️ Tú: ").strip().lower()
-
-    if comando == 'salir':
-        print("\n🤖 Gracias por usar el asistente. ¡Duerme bien!")
-        break
-    elif comando == 'predecir':
-        obtener_prediccion_y_consejos(model, scaler, feature_columns)
-    else:
-        print("🤖 No entendí eso. Por favor escribe 'predecir' o 'salir'.")
 
